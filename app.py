@@ -1,6 +1,7 @@
 import streamlit as st
 from utils.ai import analyze_resume
 from utils.pdf_report import generate_pdf
+from utils.nlp_parser import extract_resume_info
 
 from utils.parser import extract_text
 
@@ -71,6 +72,8 @@ if st.button("Analyze Resume", use_container_width=True):
 
         resume_text = extract_text(uploaded_resume)
 
+        resume_info = extract_resume_info(resume_text)
+
         stats = resume_statistics(resume_text)
 
         matched = matched_skills(
@@ -110,6 +113,33 @@ if st.button("Analyze Resume", use_container_width=True):
     col2.metric("Characters", stats["Characters"])
     col3.metric("Sentences", stats["Sentences"])
 
+
+    st.subheader("👤 Resume Information")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("📧 **Email**")
+        st.info(resume_info["email"] or "Not Found")
+
+        st.write("📞 **Phone**")
+        st.info(resume_info["phone"] or "Not Found")
+
+        st.write("🎓 **Education**")
+        st.info(resume_info["education"])
+
+        st.write("💼 **Experience**")
+        st.info(resume_info["experience"])
+
+    with col2:
+        st.write("🛠 **Detected Skills**")
+
+        if resume_info["skills"]:
+            for skill in resume_info["skills"]:
+                st.success(skill)
+        else:
+            st.warning("No skills detected.")
+            
     st.subheader("🛠 Skills Analysis")
 
     col1, col2 = st.columns(2)
