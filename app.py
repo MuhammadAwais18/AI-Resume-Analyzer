@@ -46,22 +46,6 @@ with st.sidebar:
         "AI Resume Analyzer helps compare your resume "
         "against a job description and provides a matching score."
     )
-
-
-st.divider()
-
-st.subheader("📜 Analysis History")
-
-history = get_history()
-
-if history:
-    for row in history[:10]:
-        st.caption(f"{row[0]}")
-        st.write(f"Score: {row[1]}%")
-        st.write(f"{row[2]}")
-        st.divider()
-else:
-    st.info("No analyses yet.")
     
 # ----------------------------
 # Upload Resume
@@ -230,3 +214,18 @@ if st.button("Analyze Resume", use_container_width=True):
         mime="application/pdf",
         use_container_width=True
     )
+
+    st.divider()
+
+    st.subheader("📜 Analysis History")
+
+    history = get_history()
+    
+    if history:
+        for row in history[:10]:
+            st.caption(f"{row[0]}")
+            st.write(f"Score: {row[1]}%")
+            st.write(f"{row[2]}")
+            st.divider()
+    else:
+        st.info("No analyses yet.")
