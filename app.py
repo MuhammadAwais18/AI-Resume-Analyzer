@@ -3,6 +3,12 @@ from utils.ai import analyze_resume
 from utils.pdf_report import generate_pdf
 from utils.nlp_parser import extract_resume_info
 
+from utils.database import (
+    create_database,
+    save_analysis,
+    get_history
+)
+
 from utils.parser import extract_text
 
 from utils.scorer import (
@@ -23,6 +29,8 @@ st.set_page_config(
     layout="wide"
 )
 
+create_database()
+
 # ----------------------------
 # Header
 # ----------------------------
@@ -39,6 +47,22 @@ with st.sidebar:
         "against a job description and provides a matching score."
     )
 
+
+st.divider()
+
+st.subheader("📜 Analysis History")
+
+history = get_history()
+
+if history:
+    for row in history[:10]:
+        st.caption(f"{row[0]}")
+        st.write(f"Score: {row[1]}%")
+        st.write(f"{row[2]}")
+        st.divider()
+else:
+    st.info("No analyses yet.")
+    
 # ----------------------------
 # Upload Resume
 # ----------------------------
@@ -89,6 +113,11 @@ if st.button("Analyze Resume", use_container_width=True):
         score = calculate_score(
             resume_text,
             job_description
+        )
+
+        save_analysis(
+            uploaded_resume.name,
+            score
         )
 
     st.success("Analysis Complete!")

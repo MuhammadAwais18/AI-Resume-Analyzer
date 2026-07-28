@@ -37,15 +37,27 @@ Include:
 6. Final Verdict
 """
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.3
-    )
+    try:
+       response = client.chat.completions.create(
+           model=MODEL,
+           messages=[
+               {
+                   "role": "user",
+                   "content": prompt
+               }
+           ],
+           temperature=0.3
+       )
 
-    return response.choices[0].message.content
+       print(response)
+
+       if response is None:
+           return "AI Error: No response received."
+
+       if not getattr(response, "choices", None):
+           return f"AI Error: {response}"
+
+       return response.choices[0].message.content
+
+    except Exception as e:
+        return f"AI Error: {e}"
