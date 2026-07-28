@@ -1,7 +1,17 @@
 import streamlit as st
 from utils.ai import analyze_resume
+from utils.pdf_report import generate_pdf
+
 from utils.parser import extract_text
-from utils.scorer import calculate_score
+
+from utils.scorer import (
+    calculate_score,
+    matched_skills,
+    missing_skills
+)
+
+from utils.charts import create_score_chart
+from utils.stats import resume_statistics
 
 # ----------------------------
 # Page Configuration
@@ -61,6 +71,18 @@ if st.button("Analyze Resume", use_container_width=True):
 
         resume_text = extract_text(uploaded_resume)
 
+        stats = resume_statistics(resume_text)
+
+        matched = matched_skills(
+            resume_text,
+            job_description
+        )
+
+        missing = missing_skills(
+            resume_text,
+            job_description
+        )
+
         score = calculate_score(
             resume_text,
             job_description
@@ -72,6 +94,43 @@ if st.button("Analyze Resume", use_container_width=True):
         label="Resume Match Score",
         value=f"{score}%"
     )
+
+    chart = create_score_chart(score)
+
+    st.plotly_chart(
+        chart,
+        use_container_width=True
+    )
+
+    st.subheader("📊 Resume Statistics")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Words", stats["Words"])
+    col2.metric("Characters", stats["Characters"])
+    col3.metric("Sentences", stats["Sentences"])
+
+    st.subheader("🛠 Skills Analysis")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("### ✅ Matched Skills")
+
+        if matched:
+            for skill in matched:
+                st.success(skill)
+        else:
+            st.info("No matched skills found.")
+
+    with col2:
+        st.write("### ❌ Missing Skills")
+
+        if missing:
+            for skill in missing:
+                st.error(skill)
+        else:
+            st.success("No missing skills found.")
 
     if score >= 80:
         st.success("Excellent Match ✅")
@@ -96,3 +155,19 @@ if st.button("Analyze Resume", use_container_width=True):
         )
 
     st.markdown(feedback)
+
+    pdf = generate_pdf(
+        score,
+        stats,
+        matched,
+        missing,
+        feedback
+    )
+
+    st.download_button(
+        label="📄 Download PDF Report",
+        data=pdf,
+        file_name="AI_Resume_Report.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
