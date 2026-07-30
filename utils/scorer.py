@@ -1,46 +1,49 @@
-import re
-
-
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r"[^a-zA-Z0-9\s]", "", text)
-    return text
-
-
-def tokenize(text):
-    return set(clean_text(text).split())
+from utils.nlp_parser import extract_resume_info
 
 
 def calculate_score(resume_text, job_description):
 
-    resume_words = tokenize(resume_text)
-    job_words = tokenize(job_description)
+    resume_skills = set(
+        skill.lower()
+        for skill in extract_resume_info(resume_text)["skills"]
+    )
 
-    if len(job_words) == 0:
+    job_skills = set(
+        skill.lower()
+        for skill in extract_resume_info(job_description)["skills"]
+    )
+
+    if not job_skills:
         return 0
 
-    matched_words = resume_words.intersection(job_words)
+    matched = resume_skills.intersection(job_skills)
 
-    score = (len(matched_words) / len(job_words)) * 100
+    score = (len(matched) / len(job_skills)) * 100
 
     return round(score)
 
 
-def missing_skills(resume_text, job_description):
-
-    resume_words = tokenize(resume_text)
-    job_words = tokenize(job_description)
-
-    missing = sorted(job_words - resume_words)
-
-    return missing[:25]
-
-
 def matched_skills(resume_text, job_description):
 
-    resume_words = tokenize(resume_text)
-    job_words = tokenize(job_description)
+    resume_skills = set(
+        extract_resume_info(resume_text)["skills"]
+    )
 
-    matched = sorted(resume_words.intersection(job_words))
+    job_skills = set(
+        extract_resume_info(job_description)["skills"]
+    )
 
-    return matched[:25]
+    return sorted(resume_skills.intersection(job_skills))
+
+
+def missing_skills(resume_text, job_description):
+
+    resume_skills = set(
+        extract_resume_info(resume_text)["skills"]
+    )
+
+    job_skills = set(
+        extract_resume_info(job_description)["skills"]
+    )
+
+    return sorted(job_skills - resume_skills)

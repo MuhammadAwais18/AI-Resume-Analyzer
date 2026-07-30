@@ -80,6 +80,12 @@ if st.button("Analyze Resume", use_container_width=True):
 
         resume_text = extract_text(uploaded_resume)
 
+        if not resume_text.strip():
+            st.error(
+                "Couldn't read any text from this resume. It may be scanned."
+            )
+            st.stop()
+            
         resume_info = extract_resume_info(resume_text)
 
         stats = resume_statistics(resume_text)

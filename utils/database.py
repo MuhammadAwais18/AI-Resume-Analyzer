@@ -1,6 +1,12 @@
+import os
 import sqlite3
 
 DB_PATH = "data/resume_history.db"
+
+os.makedirs(
+    os.path.dirname(DB_PATH),
+    exist_ok=True
+)
 
 
 def create_database():

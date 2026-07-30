@@ -46,10 +46,9 @@ Include:
                    "content": prompt
                }
            ],
-           temperature=0.3
+           temperature=0.3,
+           max_tokens=500
        )
-
-       print(response)
 
        if response is None:
            return "AI Error: No response received."
