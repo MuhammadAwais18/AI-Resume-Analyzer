@@ -1,59 +1,46 @@
-import os
-import sqlite3
+"""Backwards-compatible facade over :mod:`resume_analyzer.persistence`.
 
-DB_PATH = "data/resume_history.db"
+The v1 function names and return shapes are preserved: ``get_history`` still
+yields ``(resume_name, score, analysis_date)`` tuples.
+"""
 
-os.makedirs(
-    os.path.dirname(DB_PATH),
-    exist_ok=True
-)
+from __future__ import annotations
 
+from resume_analyzer.domain.models import AnalysisRecord
+from resume_analyzer.persistence import repository
 
-def create_database():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+__all__ = ["create_database", "save_analysis", "get_history", "DB_PATH"]
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            resume_name TEXT,
-            score INTEGER,
-            analysis_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    conn.commit()
-    conn.close()
+#: Kept for compatibility with any code that imported the old constant.
+DB_PATH = str(repository._database_path())  # noqa: SLF001 - intentional alias
 
 
-def save_analysis(resume_name, score):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+def create_database() -> None:
+    """Create the history table and apply pending migrations."""
+    repository.initialize_database()
 
-    cursor.execute(
-        """
-        INSERT INTO history
-        (resume_name, score)
-        VALUES (?, ?)
-        """,
-        (resume_name, score)
+
+def save_analysis(resume_name: str, score: int) -> None:
+    """Store an analysis result.
+
+    Args:
+        resume_name: Uploaded file name.
+        score: Integer ATS score between 0 and 100.
+    """
+    repository.save_record(
+        AnalysisRecord(resume_name=resume_name, score=int(score))
     )
 
-    conn.commit()
-    conn.close()
 
-
-def get_history():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT resume_name, score, analysis_date
-        FROM history
-        ORDER BY analysis_date DESC
-    """)
-
-    rows = cursor.fetchall()
-    conn.close()
-
-    return rows
+def get_history() -> list[tuple[str, int, str]]:
+    """Return history rows as ``(resume_name, score, analysis_date)`` tuples."""
+    return [
+        (
+            record.resume_name,
+            record.score,
+            record.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            if record.created_at
+            else "",
+        )
+        for record in repository.fetch_history(limit=200)
+    ]
