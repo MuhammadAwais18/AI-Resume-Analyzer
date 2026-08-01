@@ -183,6 +183,102 @@ def _to_review(payload: dict[str, Any], raw: str) -> AIReview:
     )
 
 
+#: Maps markdown headings the model may emit onto :class:`AIReview` fields.
+_HEADING_FIELDS: Final[tuple[tuple[str, str, bool], ...]] = (
+    ("executive summary", "executive_summary", False),
+    ("ats review", "ats_review", False),
+    ("overall ats review", "ats_review", False),
+    ("strengths", "strengths", True),
+    ("weaknesses", "weaknesses", True),
+    ("missing skills", "missing_skills", True),
+    ("improvement suggestions", "improvements", True),
+    ("improvements", "improvements", True),
+    ("recruiter impression", "recruiter_impression", False),
+    ("interview readiness", "interview_readiness", False),
+    ("career advice", "career_advice", True),
+    # Recognised so their bodies are not appended to the preceding section.
+    ("resume rating", "_rating", False),
+    ("final verdict", "_verdict", False),
+    ("overall rating", "_rating", False),
+    ("conclusion", "_verdict", False),
+)
+
+#: Headings captured only to terminate the previous section; not rendered.
+_DISCARDED_FIELDS: Final[frozenset[str]] = frozenset({"_rating", "_verdict"})
+
+_MARKDOWN_HEADING_RE: Final[re.Pattern[str]] = re.compile(
+    r"^\s{0,3}(?:#{1,6}\s*|\*\*)?(?:\d+[.)]\s*)?([A-Za-z][A-Za-z /&']{2,40}?)"
+    r"(?:\*\*)?\s*:?\s*$",
+    re.MULTILINE,
+)
+
+_RATING_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?:rating|score)\D{0,15}(\d{1,3}(?:\.\d)?)\s*(?:/\s*(\d{1,3}))?", re.IGNORECASE
+)
+
+
+def _salvage_markdown(content: str) -> AIReview | None:
+    """Recover a review from a markdown answer that ignored the JSON schema.
+
+    Args:
+        content: The raw model response.
+
+    Returns:
+        A populated :class:`AIReview`, or ``None`` when too little is
+        recoverable to be worth showing.
+    """
+    if not content or len(content.strip()) < 60:
+        return None
+
+    lines = content.split("\n")
+    buckets: dict[str, list[str]] = {}
+    current: str | None = None
+
+    for line in lines:
+        heading = _MARKDOWN_HEADING_RE.match(line)
+        matched_field = None
+        if heading:
+            label = heading.group(1).strip().lower()
+            matched_field = next(
+                (field for name, field, _is_list in _HEADING_FIELDS if name == label),
+                None,
+            )
+        if matched_field:
+            current = matched_field
+            buckets.setdefault(current, [])
+            continue
+        if current and line.strip():
+            buckets[current].append(line.strip())
+
+    if not buckets:
+        return None
+
+    review = AIReview(raw_markdown=content)
+    list_fields = {field for _name, field, is_list in _HEADING_FIELDS if is_list}
+
+    for field, collected in buckets.items():
+        if field in _DISCARDED_FIELDS:
+            continue
+        if field in list_fields:
+            setattr(review, field, _as_str_list("\n".join(collected)))
+        else:
+            setattr(review, field, " ".join(collected).strip())
+
+    rating_match = _RATING_RE.search(content)
+    if rating_match:
+        value = float(rating_match.group(1))
+        scale = float(rating_match.group(2) or 10)
+        review.resume_rating = round(min(_MAX_RATING, value / scale * _MAX_RATING), 1)
+
+    has_content = bool(
+        review.executive_summary
+        or review.strengths
+        or review.weaknesses
+        or review.improvements
+    )
+    return review if has_content else None
+
+
 def build_fallback_review(
     profile: ResumeProfile, requirements: JobRequirements, ats: ATSResult, reason: str
 ) -> AIReview:
@@ -318,7 +414,18 @@ def request_review(
                 raise AIResponseError(f"no choices in response: {response!r}")
 
             content = choices[0].message.content or ""
-            review = _to_review(_extract_json(content), content)
+            try:
+                review = _to_review(_extract_json(content), content)
+            except AIResponseError:
+                # Some models ignore the JSON instruction and answer in
+                # markdown. Rather than discard a usable review, salvage it by
+                # parsing the headings; only give up if nothing is recoverable.
+                review = _salvage_markdown(content)
+                if review is None:
+                    raise
+                logger.info("Recovered a markdown review on attempt %s.", attempt)
+                return review
+
             logger.info("AI review generated on attempt %s.", attempt)
             return review
 
