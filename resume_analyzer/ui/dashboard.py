@@ -15,7 +15,8 @@ from resume_analyzer.config.constants import RESUME_PREVIEW_CHARS
 from resume_analyzer.domain.models import AIReview, AnalysisResult, ResumeProfile
 from resume_analyzer.persistence import repository
 from resume_analyzer.skills.registry import related_skills
-from resume_analyzer.ui import charts, components as ui
+from resume_analyzer.ui import charts
+from resume_analyzer.ui import components as ui
 
 #: Plotly display config: hide the modebar for a cleaner, product-like feel.
 PLOTLY_CONFIG: Final[dict[str, Any]] = {
@@ -118,7 +119,7 @@ def render_kpi_strip(result: AnalysisResult) -> None:
         ),
     )
 
-    for column, card in zip(st.columns(4, gap="medium"), cards):
+    for column, card in zip(st.columns(4, gap="medium"), cards, strict=True):
         with column:
             ui.render(card)
 
@@ -285,7 +286,7 @@ def render_profile(profile: ResumeProfile) -> None:
     visible = [(icon, title, items) for icon, title, items in extras if items]
     if visible:
         for column, (icon, title, items) in zip(
-            st.columns(len(visible), gap="medium"), visible
+            st.columns(len(visible), gap="medium"), visible, strict=True
         ):
             with column:
                 ui.render(
@@ -440,7 +441,7 @@ def render_history() -> None:
             "Unique Resumes", str(summary["unique_resumes"]), icon="📄", delay=4
         ),
     )
-    for column, card in zip(st.columns(4, gap="medium"), cards):
+    for column, card in zip(st.columns(4, gap="medium"), cards, strict=True):
         with column:
             ui.render(card)
 

@@ -17,9 +17,10 @@ field to ``None`` and records a warning instead of aborting the parse.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import datetime
 from functools import lru_cache
-from typing import Callable, Final
+from typing import Final
 
 from resume_analyzer.config.logging_config import get_logger
 from resume_analyzer.domain.models import (
@@ -30,12 +31,12 @@ from resume_analyzer.domain.models import (
 )
 from resume_analyzer.parsing import nlp
 from resume_analyzer.parsing.patterns import (
+    AMBIGUOUS_DEGREE_KEYS,
     AWARD_HINTS,
     BULLET_PREFIX_RE,
     CERTIFICATION_HINTS,
     DATE_RANGE_RE,
     DEGREE_FALSE_FRIENDS,
-    AMBIGUOUS_DEGREE_KEYS,
     DEGREE_LEVELS,
     DEGREE_QUALIFIERS,
     EMAIL_RE,
@@ -525,8 +526,17 @@ def _looks_like_job_title(line: str) -> bool:
     return any(hint in lowered for hint in JOB_TITLE_HINTS)
 
 
-def extract_experience(text: str, sections: dict[str, str]) -> list[ExperienceEntry]:
-    """Extract professional experience entries."""
+def extract_experience(sections: dict[str, str]) -> list[ExperienceEntry]:
+    """Extract professional experience entries from the experience section.
+
+    Args:
+        sections: Parsed section map. Roles are only read from a dedicated
+            experience section; scanning the whole document produces too many
+            false positives to be useful.
+
+    Returns:
+        Up to twelve parsed roles in document order.
+    """
     source = sections.get("experience")
     if not source:
         return []
@@ -592,16 +602,29 @@ def _collect_lines(
     sections: dict[str, str],
     section_name: str,
     text: str,
-    predicate: Callable[[str], bool],
+    predicate: Callable[[str], bool] | None = None,
     limit: int = 12,
 ) -> list[str]:
-    """Collect matching lines from a section, falling back to the whole text."""
+    """Collect entries from a section, optionally scanning the whole document.
+
+    Args:
+        sections: Parsed section map.
+        section_name: Canonical section to read from.
+        text: Full resume text, used only when the section is absent.
+        predicate: Matches lines during the whole-document fallback. When
+            ``None`` no fallback is attempted, which is correct for sections
+            like Projects whose entries are unidentifiable outside a heading.
+        limit: Maximum number of entries to return.
+
+    Returns:
+        De-duplicated, cleaned entries.
+    """
     source = sections.get(section_name)
     candidates: list[str] = []
 
     if source:
         candidates = [BULLET_PREFIX_RE.sub("", line) for line in split_lines(source)]
-    else:
+    elif predicate is not None:
         candidates = [
             BULLET_PREFIX_RE.sub("", line)
             for line in split_lines(text)
@@ -628,7 +651,7 @@ def extract_certifications(text: str, sections: dict[str, str]) -> list[str]:
 
 def extract_projects(text: str, sections: dict[str, str]) -> list[str]:
     """Extract project titles or one-line project descriptions."""
-    return _collect_lines(sections, "projects", text, lambda line: False)
+    return _collect_lines(sections, "projects", text)
 
 
 def extract_awards(text: str, sections: dict[str, str]) -> list[str]:
@@ -643,7 +666,7 @@ def extract_awards(text: str, sections: dict[str, str]) -> list[str]:
 
 def extract_achievements(text: str, sections: dict[str, str]) -> list[str]:
     """Extract achievement statements, preferring quantified bullets."""
-    achievements = _collect_lines(sections, "achievements", text, lambda line: False)
+    achievements = _collect_lines(sections, "achievements", text)
     if achievements:
         return achievements
 
@@ -707,7 +730,7 @@ def parse_resume(text: str) -> ResumeProfile:
         ("contact", lambda: extract_contact(normalized)),
         ("skills", lambda: detect_skills(normalized)),
         ("education", lambda: extract_education(normalized, sections)),
-        ("experience", lambda: extract_experience(normalized, sections)),
+        ("experience", lambda: extract_experience(sections)),
         ("certifications", lambda: extract_certifications(normalized, sections)),
         ("projects", lambda: extract_projects(normalized, sections)),
         ("awards", lambda: extract_awards(normalized, sections)),

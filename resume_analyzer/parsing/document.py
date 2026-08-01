@@ -71,10 +71,7 @@ def _read_bytes(file: Any) -> bytes:
     try:
         if hasattr(file, "seek"):
             file.seek(0)
-        if hasattr(file, "getvalue"):
-            data = file.getvalue()
-        else:
-            data = file.read()
+        data = file.getvalue() if hasattr(file, "getvalue") else file.read()
     except Exception as exc:
         logger.warning("Unable to read uploaded file: %s", exc)
         raise CorruptDocumentError(f"read failed: {exc}") from exc

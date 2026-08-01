@@ -18,10 +18,11 @@ Design decisions:
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from html import escape
 from io import BytesIO
-from typing import Any, Final, Iterable, Sequence
+from typing import Any, Final
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT

@@ -24,7 +24,8 @@ from resume_analyzer.persistence import repository
 from resume_analyzer.reporting import build_report
 from resume_analyzer.services import analyze_upload
 from resume_analyzer.skills.registry import catalog_size
-from resume_analyzer.ui import components as ui, dashboard
+from resume_analyzer.ui import components as ui
+from resume_analyzer.ui import dashboard
 from resume_analyzer.ui.theme import build_css
 
 settings = get_settings()

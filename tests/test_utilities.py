@@ -6,7 +6,10 @@ import pytest
 
 from resume_analyzer.analytics.statistics import compute_statistics
 from resume_analyzer.exceptions import ValidationError
-from resume_analyzer.services.analysis_service import analyze_text, validate_job_description
+from resume_analyzer.services.analysis_service import (
+    analyze_text,
+    validate_job_description,
+)
 from resume_analyzer.utils_text import (
     content_tokens,
     count_action_verbs,
@@ -16,7 +19,6 @@ from resume_analyzer.utils_text import (
     truncate,
     unique_preserving_order,
 )
-
 
 # --------------------------------------------------------------------------
 # Text utilities

@@ -10,8 +10,9 @@ must never be able to inject markup into the dashboard.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from html import escape
-from typing import Iterable, Literal
+from typing import Literal
 
 import streamlit as st
 

@@ -7,7 +7,8 @@ page gradient, which is what makes them feel embedded rather than pasted on.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 import plotly.graph_objects as go
 

@@ -19,9 +19,9 @@ from resume_analyzer.domain.models import (
 from resume_analyzer.parsing.resume_parser import parse_resume
 from resume_analyzer.scoring.ats_engine import score_resume
 from resume_analyzer.scoring.job_parser import parse_job_description
-from resume_analyzer.ui import charts, components as ui
+from resume_analyzer.ui import charts
+from resume_analyzer.ui import components as ui
 from resume_analyzer.ui.theme import PALETTE, build_css, score_color
-
 
 # --------------------------------------------------------------------------
 # Theme

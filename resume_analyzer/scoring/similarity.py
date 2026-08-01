@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from resume_analyzer.utils_text import content_tokens
 
@@ -53,7 +53,7 @@ def _cosine(vector_a: dict[str, float], vector_b: dict[str, float]) -> float:
 
 def _bigrams(tokens: Sequence[str]) -> set[str]:
     """Adjacent token pairs."""
-    return {f"{first} {second}" for first, second in zip(tokens, tokens[1:])}
+    return {f"{first} {second}" for first, second in zip(tokens, tokens[1:], strict=False)}
 
 
 def tfidf_similarity(text_a: str, text_b: str) -> float:

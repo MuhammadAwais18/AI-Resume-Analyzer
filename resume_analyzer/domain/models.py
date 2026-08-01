@@ -56,7 +56,7 @@ class MatchLevel(str, Enum):
     LOW = "Low Match"
 
     @classmethod
-    def from_score(cls, score: float) -> "MatchLevel":
+    def from_score(cls, score: float) -> MatchLevel:
         """Map a 0-100 score onto a verdict."""
         if score >= SCORE_EXCELLENT:
             return cls.EXCELLENT

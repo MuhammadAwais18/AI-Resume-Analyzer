@@ -8,36 +8,18 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable
 from functools import lru_cache
-from typing import Final, Iterable
+from typing import Final
 
 #: Words with no discriminative value when comparing two documents.
 STOP_WORDS: Final[frozenset[str]] = frozenset(
-    """
-    a an the and or but if then else for of to in on at by with from as is are was
-    were be been being do does did doing have has had having i me my we our you your
-    he she it they them this that these those will would shall should can could may
-    might must not no nor so than too very just about above after again against all
-    also am any because before below between both during each few further here how
-    into more most only other out over own same some such through under until up
-    while who whom why what when where which within without work working works
-    experience experienced role roles job jobs candidate candidates team teams
-    ability able strong good great excellent using use used etc via per
-    """.split()
+    ["a", "an", "the", "and", "or", "but", "if", "then", "else", "for", "of", "to", "in", "on", "at", "by", "with", "from", "as", "is", "are", "was", "were", "be", "been", "being", "do", "does", "did", "doing", "have", "has", "had", "having", "i", "me", "my", "we", "our", "you", "your", "he", "she", "it", "they", "them", "this", "that", "these", "those", "will", "would", "shall", "should", "can", "could", "may", "might", "must", "not", "no", "nor", "so", "than", "too", "very", "just", "about", "above", "after", "again", "against", "all", "also", "am", "any", "because", "before", "below", "between", "both", "during", "each", "few", "further", "here", "how", "into", "more", "most", "only", "other", "out", "over", "own", "same", "some", "such", "through", "under", "until", "up", "while", "who", "whom", "why", "what", "when", "where", "which", "within", "without", "work", "working", "works", "experience", "experienced", "role", "roles", "job", "jobs", "candidate", "candidates", "team", "teams", "ability", "able", "strong", "good", "great", "excellent", "using", "use", "used", "etc", "via", "per"]
 )
 
 #: Verbs that signal impact-oriented resume writing.
 ACTION_VERBS: Final[frozenset[str]] = frozenset(
-    """
-    achieved accelerated architected automated built collaborated created delivered
-    designed developed directed drove enabled engineered enhanced established
-    executed expanded generated implemented improved increased initiated introduced
-    launched led maintained managed migrated modernised modernized negotiated
-    optimised optimized orchestrated overhauled pioneered planned produced
-    programmed reduced refactored resolved restructured scaled shipped simplified
-    spearheaded standardised standardized streamlined strengthened supervised
-    transformed troubleshot mentored coached owned founded
-    """.split()
+    ["achieved", "accelerated", "architected", "automated", "built", "collaborated", "created", "delivered", "designed", "developed", "directed", "drove", "enabled", "engineered", "enhanced", "established", "executed", "expanded", "generated", "implemented", "improved", "increased", "initiated", "introduced", "launched", "led", "maintained", "managed", "migrated", "modernised", "modernized", "negotiated", "optimised", "optimized", "orchestrated", "overhauled", "pioneered", "planned", "produced", "programmed", "reduced", "refactored", "resolved", "restructured", "scaled", "shipped", "simplified", "spearheaded", "standardised", "standardized", "streamlined", "strengthened", "supervised", "transformed", "troubleshot", "mentored", "coached", "owned", "founded"]
 )
 
 _WORD_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z][A-Za-z+#.\-]*")

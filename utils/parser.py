@@ -11,8 +11,8 @@ from typing import Any
 from resume_analyzer.config.logging_config import get_logger
 from resume_analyzer.exceptions import ResumeAnalyzerError
 from resume_analyzer.parsing.document import (
-    extract_docx_text,
     extract_document,
+    extract_docx_text,
     extract_pdf_text,
 )
 

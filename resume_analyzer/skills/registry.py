@@ -18,10 +18,11 @@ Matching rules:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from functools import lru_cache
-from typing import Final, Iterable
+from typing import Final
 
 from resume_analyzer.config.constants import FUZZY_MATCH_THRESHOLD
 from resume_analyzer.config.logging_config import get_logger
@@ -164,17 +165,7 @@ _LIST_SEPARATORS: Final[tuple[str, ...]] = (",", "|", "•", "·", "/", ";", "\t
 
 #: Words that establish an engineering context around an ambiguous token.
 _CONTEXT_TERMS: Final[frozenset[str]] = frozenset(
-    """
-    programming language languages developer development engineer engineering
-    software backend frontend fullstack stack framework frameworks library
-    libraries tool tools technology technologies technical skills proficient
-    proficiency experience expertise knowledge familiar using used build built
-    building code coding wrote written implemented developed designed api apis
-    application applications service services system systems platform server
-    microservices database cloud devops docker kubernetes linux git testing
-    deployment production scripting automation data analysis analytics model
-    models pipeline pipelines certified certification project projects
-    """.split()
+    ["programming", "language", "languages", "developer", "development", "engineer", "engineering", "software", "backend", "frontend", "fullstack", "stack", "framework", "frameworks", "library", "libraries", "tool", "tools", "technology", "technologies", "technical", "skills", "proficient", "proficiency", "experience", "expertise", "knowledge", "familiar", "using", "used", "build", "built", "building", "code", "coding", "wrote", "written", "implemented", "developed", "designed", "api", "apis", "application", "applications", "service", "services", "system", "systems", "platform", "server", "microservices", "database", "cloud", "devops", "docker", "kubernetes", "linux", "git", "testing", "deployment", "production", "scripting", "automation", "data", "analysis", "analytics", "model", "models", "pipeline", "pipelines", "certified", "certification", "project", "projects"]
 )
 
 #: How many characters either side of a match are inspected for context.
