@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from functools import lru_cache
-from typing import Iterable
+from typing import Final, Iterable
 
 from resume_analyzer.config.constants import FUZZY_MATCH_THRESHOLD
 from resume_analyzer.config.logging_config import get_logger
@@ -30,27 +30,155 @@ from resume_analyzer.skills.catalog import SKILL_CATALOG, SkillSpec
 
 logger = get_logger(__name__)
 
-#: Skills that commonly travel together, used to suggest adjacent technologies.
+#: Word splitter used when inspecting the context around an ambiguous match.
+_WORD_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[a-z]+")
+
+#: Skills that commonly travel together in real job postings. Used to suggest
+#: adjacent technologies a candidate probably knows but forgot to list.
 RELATED_SKILLS: dict[str, tuple[str, ...]] = {
-    "Docker": ("Kubernetes", "CI/CD", "Linux"),
-    "Kubernetes": ("Docker", "Terraform", "AWS"),
-    "React": ("TypeScript", "Redux", "Next.js"),
-    "Next.js": ("React", "TypeScript"),
-    "Django": ("Python", "PostgreSQL", "REST API"),
-    "Flask": ("Python", "REST API"),
-    "FastAPI": ("Python", "REST API", "Docker"),
-    "Machine Learning": ("Python", "scikit-learn", "Pandas"),
-    "Deep Learning": ("PyTorch", "TensorFlow", "Python"),
-    "PyTorch": ("Deep Learning", "Python", "NumPy"),
-    "TensorFlow": ("Deep Learning", "Python"),
-    "AWS": ("Docker", "Terraform", "Linux"),
-    "Terraform": ("AWS", "Kubernetes", "CI/CD"),
-    "Pandas": ("NumPy", "Python", "SQL"),
-    "Node.js": ("JavaScript", "Express.js", "REST API"),
-    "TypeScript": ("JavaScript", "React"),
-    "PostgreSQL": ("SQL", "Database Design"),
-    "Apache Spark": ("Python", "SQL", "Data Engineering"),
+    # Containers, cloud and platform
+    "Docker": ("Kubernetes", "CI/CD", "Linux", "Docker Compose"),
+    "Kubernetes": ("Docker", "Helm", "Terraform", "Prometheus"),
+    "Helm": ("Kubernetes", "ArgoCD"),
+    "Terraform": ("AWS", "Kubernetes", "CI/CD", "Infrastructure as Code"),
+    "AWS": ("Docker", "Terraform", "Linux", "Amazon S3"),
+    "Microsoft Azure": ("Azure DevOps", "Docker", "Terraform"),
+    "Google Cloud Platform": ("Kubernetes", "Terraform", "Google BigQuery"),
+    "CI/CD": ("GitHub Actions", "Docker", "Test Automation"),
+    "GitHub Actions": ("CI/CD", "Docker", "Git"),
+    "Prometheus": ("Grafana", "Kubernetes", "Observability"),
+    "Site Reliability Engineering": ("Observability", "Kubernetes", "Incident Management"),
+    # Frontend
+    "React": ("TypeScript", "Redux", "Next.js", "Jest"),
+    "Next.js": ("React", "TypeScript", "Vercel"),
+    "Vue.js": ("JavaScript", "TypeScript", "Vite"),
+    "Angular": ("TypeScript", "REST API", "Jest"),
+    "TypeScript": ("JavaScript", "React", "Node.js"),
+    "Tailwind CSS": ("CSS", "React", "Design Systems"),
+    # Backend
+    "Node.js": ("JavaScript", "Express.js", "REST API", "MongoDB"),
+    "Django": ("Python", "PostgreSQL", "REST API", "Celery"),
+    "Flask": ("Python", "REST API", "PostgreSQL"),
+    "FastAPI": ("Python", "REST API", "Docker", "PostgreSQL"),
+    "Spring Boot": ("Java", "REST API", "PostgreSQL", "Maven"),
+    ".NET": ("C#", "Microsoft SQL Server", "Microsoft Azure"),
+    "REST API": ("OpenAPI", "Postman", "JWT"),
+    "GraphQL": ("REST API", "Node.js", "TypeScript"),
+    "Microservices": ("Docker", "Kubernetes", "Apache Kafka", "System Design"),
+    "Apache Kafka": ("Stream Processing", "Microservices", "Java"),
+    # Databases
+    "PostgreSQL": ("SQL", "Database Design", "Query Optimization"),
+    "MySQL": ("SQL", "Database Design"),
+    "MongoDB": ("Node.js", "Database Design"),
+    "Redis": ("Caching Strategies", "PostgreSQL", "Node.js"),
+    "Snowflake": ("SQL", "dbt", "Data Warehousing"),
+    # Data
+    "Pandas": ("NumPy", "Python", "SQL", "Data Analysis"),
+    "NumPy": ("Pandas", "Python", "SciPy"),
+    "Apache Spark": ("Python", "SQL", "ETL", "Apache Airflow"),
+    "Apache Airflow": ("Python", "ETL", "Data Warehousing"),
+    "dbt": ("SQL", "Data Warehousing", "Snowflake"),
+    "ETL": ("SQL", "Apache Airflow", "Data Warehousing"),
+    "Power BI": ("SQL", "Data Visualization", "Excel"),
+    "Tableau": ("SQL", "Data Visualization"),
+    # AI / ML
+    "Machine Learning": ("Python", "scikit-learn", "Pandas", "Model Deployment"),
+    "Deep Learning": ("PyTorch", "TensorFlow", "Python", "CUDA"),
+    "PyTorch": ("Deep Learning", "Python", "NumPy", "Hugging Face"),
+    "TensorFlow": ("Deep Learning", "Python", "Keras"),
+    "scikit-learn": ("Pandas", "NumPy", "Machine Learning"),
+    "Natural Language Processing": ("Hugging Face", "Transformers", "Python"),
+    "Large Language Models": ("Prompt Engineering", "RAG", "LangChain", "Fine-Tuning"),
+    "RAG": ("Embeddings", "Pinecone", "LangChain", "Large Language Models"),
+    "LangChain": ("Large Language Models", "RAG", "Python"),
+    "MLOps": ("MLflow", "Docker", "Kubernetes", "Model Monitoring"),
+    "Computer Vision": ("OpenCV", "PyTorch", "Deep Learning"),
+    # Mobile
+    "React Native": ("React", "TypeScript", "iOS Development"),
+    "Flutter": ("Dart", "Mobile UI Design"),
+    "Android Development": ("Kotlin", "Java", "Room Database"),
+    "iOS Development": ("Swift", "Core Data"),
+    # Security
+    "Cybersecurity": ("Network Security", "Penetration Testing", "Cryptography"),
+    "Penetration Testing": ("Burp Suite", "Nmap", "Kali Linux"),
+    "DevSecOps": ("CI/CD", "SonarQube", "Snyk", "Application Security"),
+    # Languages & practices
+    "Python": ("Pandas", "pytest", "Django", "SQL"),
+    "Java": ("Spring Boot", "Maven", "JUnit"),
+    "Go": ("Docker", "Kubernetes", "Microservices"),
+    "Rust": ("C++", "WebAssembly", "Go"),
+    "SQL": ("PostgreSQL", "Data Analysis", "Query Optimization"),
+    "Git": ("GitHub", "Code Review", "CI/CD"),
+    "pytest": ("Python", "Test Automation", "Code Coverage"),
+    "Test Automation": ("CI/CD", "Selenium", "Playwright"),
+    "Agile": ("Scrum", "Jira", "Kanban"),
 }
+
+
+#: Skills whose names are also ordinary English words. Matching them on the
+#: bare token alone produces false positives ("go to the office", "the rust on
+#: the gate"), so each occurrence must be corroborated by nearby technical
+#: context before it is reported.
+AMBIGUOUS_SKILLS: Final[frozenset[str]] = frozenset(
+    {
+        "Go",
+        "Rust",
+        "R",
+        "C",
+        "Agile",
+        "Chef",
+        "Vim",
+        "Fiber",
+        "Gin",
+        "Flux",
+        "Less",
+        "Dart",
+        "Swift",
+        "Julia",
+        "Phoenix",
+        "Linear",
+        "Notion",
+        "Sketch",
+        "Canva",
+        "Scheme",
+        "Assembly",
+        "Communication",
+        "Collaboration",
+        "Leadership",
+        "Adaptability",
+        "Statistics",
+        "Algorithms",
+        "Embeddings",
+        "Transformers",
+        "Mocking",
+        "Refactoring",
+        "Waterfall",
+        "Kanban",
+        "Excel",
+        "Mercurial",
+    }
+)
+
+#: Characters and cues that mark a line as a skills list rather than prose.
+_LIST_SEPARATORS: Final[tuple[str, ...]] = (",", "|", "•", "·", "/", ";", "\t")
+
+#: Words that establish an engineering context around an ambiguous token.
+_CONTEXT_TERMS: Final[frozenset[str]] = frozenset(
+    """
+    programming language languages developer development engineer engineering
+    software backend frontend fullstack stack framework frameworks library
+    libraries tool tools technology technologies technical skills proficient
+    proficiency experience expertise knowledge familiar using used build built
+    building code coding wrote written implemented developed designed api apis
+    application applications service services system systems platform server
+    microservices database cloud devops docker kubernetes linux git testing
+    deployment production scripting automation data analysis analytics model
+    models pipeline pipelines certified certification project projects
+    """.split()
+)
+
+#: How many characters either side of a match are inspected for context.
+_CONTEXT_WINDOW: Final[int] = 90
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,8 +305,33 @@ def resolve(term: str, *, fuzzy: bool = True) -> Skill | None:
     return best.to_skill(matched_alias=term.strip()) if best else None
 
 
+def _has_technical_context(text: str, start: int, end: int) -> bool:
+    """Decide whether a match sits in a technical context.
+
+    An ambiguous token counts as a skill when it appears in a delimited list
+    (``"Python, Go, Rust"``), in a short line typical of a skills section, or
+    near explicit engineering vocabulary.
+    """
+    window = text[max(0, start - _CONTEXT_WINDOW) : end + _CONTEXT_WINDOW]
+
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    line = text[line_start : line_end if line_end != -1 else len(text)]
+
+    if any(separator in line for separator in _LIST_SEPARATORS):
+        return True
+    # Short standalone lines are almost always list items or headings.
+    if len(line.strip()) <= 40:
+        return True
+    return any(term in _CONTEXT_TERMS for term in _WORD_SPLIT_RE.findall(window.lower()))
+
+
 def detect_skills(text: str, *, min_occurrences: int = 1) -> list[Skill]:
     """Detect every catalog skill present in ``text``.
+
+    Skills whose names are ordinary English words (:data:`AMBIGUOUS_SKILLS`)
+    are only reported when corroborated by surrounding technical context, which
+    keeps prose such as *"I like to go to the office"* from registering as Go.
 
     Args:
         text: Document text to scan.
@@ -192,16 +345,26 @@ def detect_skills(text: str, *, min_occurrences: int = 1) -> list[Skill]:
 
     found: list[Skill] = []
     for definition in _definitions():
-        matches = definition.pattern.findall(text)
-        if len(matches) >= min_occurrences:
-            first = matches[0]
-            alias = first if isinstance(first, str) else definition.name
-            found.append(
-                definition.to_skill(
-                    matched_alias=alias or definition.name,
-                    occurrences=len(matches),
-                )
+        matches = list(definition.pattern.finditer(text))
+        if not matches:
+            continue
+
+        if definition.name in AMBIGUOUS_SKILLS:
+            matches = [
+                match
+                for match in matches
+                if _has_technical_context(text, match.start(), match.end())
+            ]
+
+        if len(matches) < min_occurrences:
+            continue
+
+        found.append(
+            definition.to_skill(
+                matched_alias=matches[0].group() or definition.name,
+                occurrences=len(matches),
             )
+        )
 
     found.sort(key=lambda skill: (-skill.weight, -skill.occurrences, skill.name))
     return found
