@@ -1,0 +1,50 @@
+[project]
+name = "ai-resume-analyzer"
+version = "2.0.0"
+description = "Recruiter-grade AI resume analysis with a weighted ATS engine"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Runtime dependencies are pinned in requirements.txt, which is what the
+# Streamlit Community Cloud deployment installs. This section documents the
+# direct dependencies for humans and tooling.
+dependencies = [
+    "streamlit",
+    "plotly",
+    "pdfplumber",
+    "python-docx",
+    "reportlab",
+    "openai",
+    "python-dotenv",
+    "pandas",
+    "spacy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.ruff]
+line-length = 92
+target-version = "py310"
+exclude = [".venv", "venv", "data", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "SIM", "C4", "RET", "PIE", "ARG"]
+ignore = [
+    "E501",   # Line length is enforced by the formatter, not the linter.
+    "B008",   # Function calls in argument defaults are used intentionally.
+    "RET504", # Named return values aid readability in this codebase.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixtures are frequently requested for their side effects only.
+"tests/*" = ["ARG001", "ARG002", "ARG005"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["resume_analyzer", "utils"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --tb=short"
+filterwarnings = ["ignore::DeprecationWarning"]

@@ -1,62 +1,39 @@
-import os
-from openai import OpenAI
-from dotenv import load_dotenv
+"""Backwards-compatible facade over :mod:`resume_analyzer.ai`.
 
-load_dotenv()
+v1 exposed ``analyze_resume(resume_text, job_description) -> str`` and returned
+error strings such as ``"AI Error: ..."`` on failure. That contract is kept,
+but failures now yield a useful deterministic review instead of a raw
+exception message.
 
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_BASE_URL")
-)
-
-MODEL = os.getenv("MODEL")
-
-
-def analyze_resume(resume_text, job_description):
-
-    prompt = f"""
-You are an ATS Resume Expert.
-
-Resume:
-
-{resume_text}
-
-Job Description:
-
-{job_description}
-
-Return your answer in Markdown.
-
-Include:
-
-1. Overall ATS Review
-2. Strengths
-3. Weaknesses
-4. Missing Skills
-5. Resume Improvement Suggestions
-6. Final Verdict
+The environment variables (``OPENAI_API_KEY``, ``OPENAI_BASE_URL``, ``MODEL``)
+and the OpenAI-compatible client are unchanged.
 """
 
-    try:
-       response = client.chat.completions.create(
-           model=MODEL,
-           messages=[
-               {
-                   "role": "user",
-                   "content": prompt
-               }
-           ],
-           temperature=0.3,
-           max_tokens=500
-       )
+from __future__ import annotations
 
-       if response is None:
-           return "AI Error: No response received."
+from resume_analyzer.ai.reviewer import request_review, review_to_markdown
+from resume_analyzer.parsing.resume_parser import parse_resume
+from resume_analyzer.scoring.ats_engine import score_resume
+from resume_analyzer.scoring.job_parser import parse_job_description
 
-       if not getattr(response, "choices", None):
-           return f"AI Error: {response}"
+__all__ = ["analyze_resume"]
 
-       return response.choices[0].message.content
 
-    except Exception as e:
-        return f"AI Error: {e}"
+def analyze_resume(resume_text: str, job_description: str) -> str:
+    """Generate an AI resume review rendered as markdown.
+
+    Args:
+        resume_text: Raw resume text.
+        job_description: Raw job description text.
+
+    Returns:
+        Markdown review. Never raises: provider failures fall back to a
+        deterministic review derived from the local ATS analysis.
+    """
+    profile = parse_resume(resume_text)
+    requirements = parse_job_description(job_description)
+    ats = score_resume(profile, requirements)
+    review = request_review(
+        resume_text, job_description, profile, requirements, ats
+    )
+    return review_to_markdown(review)

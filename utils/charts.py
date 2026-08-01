@@ -1,31 +1,25 @@
+"""Backwards-compatible facade over :mod:`resume_analyzer.ui.charts`.
+
+``create_score_chart`` keeps its v1 signature and still returns a Plotly
+figure, now styled for the premium dashboard.
+"""
+
+from __future__ import annotations
+
 import plotly.graph_objects as go
 
+from resume_analyzer.ui.charts import score_gauge
 
-def create_score_chart(score):
-    color = "#ef4444"
+__all__ = ["create_score_chart"]
 
-    if score >= 80:
-        color = "#22c55e"
-    elif score >= 60:
-        color = "#f59e0b"
 
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number",
-            value=score,
-            title={"text": "ATS Match Score"},
-            gauge={
-                "axis": {"range": [0, 100]},
-                "bar": {"color": color},
-                "steps": [
-                    {"range": [0, 60], "color": "#fee2e2"},
-                    {"range": [60, 80], "color": "#fef3c7"},
-                    {"range": [80, 100], "color": "#dcfce7"},
-                ],
-            },
-        )
-    )
+def create_score_chart(score: float) -> go.Figure:
+    """Return the ATS score gauge figure.
 
-    fig.update_layout(height=350)
+    Args:
+        score: Match score between 0 and 100.
 
-    return fig
+    Returns:
+        A Plotly figure ready for ``st.plotly_chart``.
+    """
+    return score_gauge(score)
