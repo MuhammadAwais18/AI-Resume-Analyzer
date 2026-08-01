@@ -43,15 +43,28 @@ logger = get_logger(__name__)
 MAX_SCORE: Final[float] = 100.0
 
 
+#: Below this required-skill coverage a commercial ATS applies a knock-out
+#: rule: the candidate cannot rank highly regardless of other strengths.
+CRITICAL_COVERAGE_THRESHOLD: Final[float] = 0.30
+
+#: Ceiling applied when the knock-out rule fires.
+KNOCKOUT_SCORE_CEILING: Final[float] = 48.0
+
+#: Exponent applied to raw cosine similarity. Resumes are far shorter than
+#: postings, so raw cosine is structurally low; the curve maps realistic
+#: alignment onto a usable 0-100 range without inflating unrelated documents.
+SEMANTIC_CURVE_EXPONENT: Final[float] = 0.55
+
+
 @dataclass(frozen=True, slots=True)
 class ScoringWeights:
     """Relative weights of the scoring components. Must sum to 1.0."""
 
-    required_skills: float = 0.35
+    required_skills: float = 0.40
     optional_skills: float = 0.10
-    semantic: float = 0.20
-    keywords: float = 0.15
-    experience: float = 0.12
+    semantic: float = 0.15
+    keywords: float = 0.13
+    experience: float = 0.14
     education: float = 0.08
 
     def validate(self) -> None:
@@ -295,13 +308,13 @@ def score_resume(
         ),
         ScoreComponent(
             name="Semantic Match",
-            score=min(MAX_SCORE, semantic * 145),
+            score=min(MAX_SCORE, (semantic ** SEMANTIC_CURVE_EXPONENT) * MAX_SCORE),
             weight=weights.semantic,
             detail="Overall topical alignment between the resume and the posting.",
         ),
         ScoreComponent(
             name="Keyword Relevance",
-            score=keywords * MAX_SCORE,
+            score=min(MAX_SCORE, keywords * 125),
             weight=weights.keywords,
             detail=f"{round(keywords * 100)}% of key job terms appear in the resume.",
         ),
@@ -320,6 +333,16 @@ def score_resume(
     ]
 
     overall = sum(component.weighted_score for component in components)
+
+    # Knock-out rule: commercial ATS platforms cap candidates who miss most
+    # must-have skills, so strong prose can never mask a hard capability gap.
+    if requirements.required_skills and required_coverage < CRITICAL_COVERAGE_THRESHOLD:
+        overall = min(overall, KNOCKOUT_SCORE_CEILING)
+        logger.info(
+            "Knock-out applied: required-skill coverage %.0f%% below threshold.",
+            required_coverage * 100,
+        )
+
     overall = max(0.0, min(MAX_SCORE, overall))
 
     job_skill_names = {skill.name for skill in requirements.all_skills}
