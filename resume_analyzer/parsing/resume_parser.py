@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from functools import lru_cache
 from typing import Callable, Final
 
 from resume_analyzer.config.logging_config import get_logger
@@ -33,6 +34,8 @@ from resume_analyzer.parsing.patterns import (
     BULLET_PREFIX_RE,
     CERTIFICATION_HINTS,
     DATE_RANGE_RE,
+    DEGREE_FALSE_FRIENDS,
+    AMBIGUOUS_DEGREE_KEYS,
     DEGREE_LEVELS,
     DEGREE_QUALIFIERS,
     EMAIL_RE,
@@ -110,6 +113,21 @@ def _is_heading(line: str) -> str | None:
     return None
 
 
+def _split_inline_heading(line: str) -> tuple[str, str] | None:
+    """Split ``"SKILLS | Java, Python"`` into ``("skills", "Java, Python")``.
+
+    Returns ``None`` when the line is not a heading-plus-body row.
+    """
+    for separator in ("|", ":", "\t"):
+        if separator not in line:
+            continue
+        head, _, body = line.partition(separator)
+        canonical = HEADING_LOOKUP.get(_normalize_heading(head))
+        if canonical and len(head.strip()) <= _MAX_HEADING_LENGTH:
+            return canonical, body.strip()
+    return None
+
+
 def split_sections(text: str) -> dict[str, str]:
     """Split resume text into canonical sections.
 
@@ -125,11 +143,23 @@ def split_sections(text: str) -> dict[str, str]:
 
     for line in text.split("\n"):
         stripped = line.strip()
+
         heading = _is_heading(stripped)
         if heading:
             current = heading
             sections.setdefault(current, [])
             continue
+
+        # Table-based layouts (common in DOCX) put the heading and its body on
+        # one row: "SKILLS | Java, Spring Boot". Split and route the content.
+        inline = _split_inline_heading(stripped)
+        if inline is not None:
+            current, body = inline
+            sections.setdefault(current, [])
+            if body:
+                sections[current].append(body)
+            continue
+
         if stripped:
             sections.setdefault(current, []).append(stripped)
 
@@ -202,6 +232,28 @@ def extract_portfolio(text: str) -> str | None:
     return None
 
 
+def _titlecase_name(value: str) -> str:
+    """Title-case a name without destroying O'Connor, McLeod or Ramírez-Álvarez.
+
+    ``str.title()`` mangles apostrophes and hyphens (``"O'Connor"`` becomes
+    ``"O'Connor"`` -> ``"O'Connor"`` is fine, but ``"O'CONNOR"`` becomes
+    ``"O'Connor"`` only if each sub-token is handled), so casing is applied
+    per sub-token while already-mixed-case tokens are left untouched.
+    """
+    def fix_token(token: str) -> str:
+        if not token:
+            return token
+        # Preserve deliberate internal capitals such as "McLeod" or "DeSouza".
+        if not token.isupper() and not token.islower() and token[0].isupper():
+            return token
+        parts = re.split(r"([\-'’])", token.lower())
+        return "".join(
+            part.capitalize() if part.isalpha() else part for part in parts
+        )
+
+    return " ".join(fix_token(token) for token in value.split())
+
+
 def _looks_like_name(line: str) -> bool:
     """Heuristically decide whether ``line`` is a person's name."""
     stripped = BULLET_PREFIX_RE.sub("", line).strip()
@@ -239,11 +291,11 @@ def extract_full_name(text: str, email: str | None = None) -> str | None:
 
     for line in lines:
         if _looks_like_name(line):
-            return BULLET_PREFIX_RE.sub("", line).strip().title()
+            return _titlecase_name(BULLET_PREFIX_RE.sub("", line).strip())
 
     for entity in nlp.extract_entities(text, ("PERSON",)):
         if _looks_like_name(entity):
-            return entity.title()
+            return _titlecase_name(entity)
 
     if email:
         local = re.split(r"[._\-0-9]+", email.split("@")[0])
@@ -285,6 +337,48 @@ def _extract_location(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+@lru_cache(maxsize=1)
+def _degree_patterns() -> tuple[tuple[re.Pattern[str], str, int], ...]:
+    """Compile a word-boundary pattern per degree keyword.
+
+    Short abbreviations such as ``bs``, ``ms`` and ``bca`` must not match
+    inside unrelated words ("jobs", "systems", "forms"), so substring search
+    is not safe here.
+    """
+    compiled: list[tuple[re.Pattern[str], str, int]] = []
+    for keyword, (label, rank) in DEGREE_LEVELS.items():
+        escaped = re.escape(keyword).replace(r"\ ", r"\s+")
+        # "MS Excel" and "BS Windows" are products, not degrees.
+        guard = (
+            rf"(?!\s+(?:{DEGREE_FALSE_FRIENDS})\b)"
+            if keyword in AMBIGUOUS_DEGREE_KEYS
+            else ""
+        )
+        pattern = re.compile(
+            rf"(?<![A-Za-z0-9]){escaped}\.?(?![A-Za-z0-9]){guard}", re.IGNORECASE
+        )
+        compiled.append((pattern, label, rank))
+    return tuple(compiled)
+
+
+def _match_degree(text: str) -> tuple[str | None, int]:
+    """Return the highest-ranked degree mentioned in ``text``."""
+    best_label: str | None = None
+    best_rank = 0
+    for pattern, label, rank in _degree_patterns():
+        if rank > best_rank and pattern.search(text):
+            best_label, best_rank = label, rank
+    return best_label, best_rank
+
+
+def _rank_for_label(label: str) -> int:
+    """Return the seniority rank for a canonical degree label."""
+    return max(
+        (rank for name, rank in DEGREE_LEVELS.values() if name == label),
+        default=0,
+    )
+
+
 def education_level(text: str) -> tuple[str | None, int]:
     """Return the highest degree label and its seniority rank.
 
@@ -294,13 +388,7 @@ def education_level(text: str) -> tuple[str | None, int]:
     Returns:
         ``(label, rank)`` where rank is 0 when nothing was found.
     """
-    lowered = text.lower()
-    best_label: str | None = None
-    best_rank = 0
-    for keyword, (label, rank) in DEGREE_LEVELS.items():
-        if keyword in lowered and rank > best_rank:
-            best_label, best_rank = label, rank
-    return best_label, best_rank
+    return _match_degree(text)
 
 
 def _field_of_study(line: str) -> str | None:
@@ -332,19 +420,10 @@ def extract_education(text: str, sections: dict[str, str]) -> list[EducationEntr
     seen: set[str] = set()
 
     for line in split_lines(source):
-        lowered = line.lower()
-        matched = next(
-            (
-                (label, keyword)
-                for keyword, (label, _rank) in DEGREE_LEVELS.items()
-                if keyword in lowered
-            ),
-            None,
-        )
-        if not matched:
+        label, rank = _match_degree(line)
+        if not label or rank == 0:
             continue
 
-        label, _keyword = matched
         if label in seen and len(entries) >= 4:
             continue
 
@@ -366,7 +445,7 @@ def extract_education(text: str, sections: dict[str, str]) -> list[EducationEntr
         )
         seen.add(label)
 
-    entries.sort(key=lambda entry: -DEGREE_LEVELS.get(entry.degree.lower(), ("", 0))[1])
+    entries.sort(key=lambda entry: -_rank_for_label(entry.degree))
     return entries[:5]
 
 
@@ -457,6 +536,10 @@ def extract_experience(text: str, sections: dict[str, str]) -> list[ExperienceEn
 
     for index, line in enumerate(lines):
         if BULLET_PREFIX_RE.match(line) or not _looks_like_job_title(line):
+            continue
+        # A heading that survived segmentation (common in table-based DOCX
+        # layouts) is a section label, not a role.
+        if _is_heading(line) or _normalize_heading(line) in HEADING_LOOKUP:
             continue
 
         date_match = DATE_RANGE_RE.search(line)

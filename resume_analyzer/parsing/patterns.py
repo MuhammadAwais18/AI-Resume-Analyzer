@@ -17,13 +17,15 @@ EMAIL_RE: Final[re.Pattern[str]] = re.compile(
     r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"
 )
 
-#: Deliberately strict so that dates and identifiers are not read as phones.
+#: Matches international and local formats — "+1 (415) 555-0198",
+#: "+44 20 7946 0958", "+92 300 1234567", "0300-1234567" — while staying
+#: strict enough to reject dates and identifiers.
 PHONE_RE: Final[re.Pattern[str]] = re.compile(
-    r"(?:(?<=^)|(?<=[^\d]))"
-    r"(\+?\d{1,3}[\s.\-]?)?"
-    r"(\(?\d{2,4}\)?[\s.\-]?)"
-    r"\d{3}[\s.\-]?\d{3,4}"
-    r"(?:(?=$)|(?=[^\d]))"
+    r"(?<![\d\-/])"
+    r"(?:\+\d{1,3}[\s.\-]?)?"
+    r"(?:\(\d{2,4}\)[\s.\-]?|\d{2,4}[\s.\-])?"
+    r"\d{3,5}[\s.\-]?\d{3,5}"
+    r"(?![\d\-/])"
 )
 
 LINKEDIN_RE: Final[re.Pattern[str]] = re.compile(
@@ -100,11 +102,17 @@ DEGREE_LEVELS: Final[dict[str, tuple[str, int]]] = {
     "m.tech": ("M.Tech", 4),
     "mtech": ("M.Tech", 4),
     "m.eng": ("M.Eng", 4),
+    "m.phil": ("MPhil", 4),
+    "mphil": ("MPhil", 4),
+    "ms": ("MS", 4),
+    "ma": ("MA", 4),
     "bachelor": ("Bachelor's Degree", 3),
     "bachelors": ("Bachelor's Degree", 3),
     "b.sc": ("BSc", 3),
     "bsc": ("BSc", 3),
     "b.s.": ("BS", 3),
+    "bs": ("BS", 3),
+    "ba": ("BA", 3),
     "b.tech": ("B.Tech", 3),
     "btech": ("B.Tech", 3),
     "b.e.": ("B.E.", 3),
@@ -118,6 +126,18 @@ DEGREE_LEVELS: Final[dict[str, tuple[str, int]]] = {
     "matric": ("Matriculation", 1),
     "high school": ("High School", 1),
 }
+
+#: Short degree abbreviations that collide with product names ("MS Excel",
+#: "BA in marketing" vs. "BA Systems"). They only count as degrees when they
+#: are not immediately followed by one of these words.
+AMBIGUOUS_DEGREE_KEYS: Final[frozenset[str]] = frozenset(
+    {"ms", "ma", "bs", "ba", "mca", "bca"}
+)
+
+DEGREE_FALSE_FRIENDS: Final[str] = (
+    r"office|excel|word|powerpoint|outlook|teams|sql|server|azure|windows|"
+    r"visio|access|project|dynamics|sharepoint|paint"
+)
 
 FIELD_OF_STUDY_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:in|of)\s+([A-Za-z][A-Za-z&\s]{2,40}?)"
