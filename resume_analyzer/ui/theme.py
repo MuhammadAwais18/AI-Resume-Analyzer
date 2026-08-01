@@ -77,11 +77,52 @@ def score_color(score: float) -> str:
     return PALETTE.danger
 
 
+def _collapse_indentation(markup: str) -> str:
+    """Flatten stylesheet markup into blank-line-free, unindented lines.
+
+    Streamlit renders ``st.markdown`` content through a CommonMark parser
+    before the HTML reaches the browser, and CommonMark's *HTML block* rules
+    make a raw ``<style>`` payload surprisingly fragile:
+
+    1. A leading ``<link>`` tag opens a "type 7" HTML block, which CommonMark
+       terminates at the **first blank line**.
+    2. Any blank line inside the following ``<style>`` body therefore closes
+       the HTML block early, and every remaining CSS line is re-parsed as
+       Markdown — emitted inside ``<p>`` tags as literal text at the top of
+       the page instead of styling it.
+    3. Separately, lines indented four or more spaces can be treated as
+       indented code blocks.
+
+    Removing blank lines (the actual trigger) and leading indentation (a
+    latent second trigger) keeps the entire stylesheet inside a single HTML
+    block. CSS is whitespace-insensitive between tokens, so this is purely a
+    transport concern: every selector, property, colour and keyframe is
+    preserved and the rendered design is byte-for-byte unchanged.
+
+    Args:
+        markup: The stylesheet markup, formatted for readability.
+
+    Returns:
+        The same markup with blank lines dropped and per-line leading
+        whitespace removed.
+    """
+    return "\n".join(
+        stripped
+        for line in markup.splitlines()
+        if (stripped := line.strip())
+    )
+
+
 @lru_cache(maxsize=1)
 def build_css() -> str:
-    """Return the complete stylesheet, generated once per process."""
+    """Return the complete stylesheet, generated once per process.
+
+    The markup is de-indented before it is returned so Streamlit's Markdown
+    parser cannot mistake indented CSS for a code block. See
+    :func:`_collapse_indentation`.
+    """
     p = PALETTE
-    return f"""
+    return _collapse_indentation(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -411,4 +452,4 @@ div[data-testid="stProgress"] > div > div > div {{
   .ra-stat-value {{ font-size:1.7rem; }}
 }}
 </style>
-"""
+""")

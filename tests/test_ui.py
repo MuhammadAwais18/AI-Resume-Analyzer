@@ -7,6 +7,8 @@ and must never be able to inject markup into the dashboard.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from resume_analyzer.domain.models import (
@@ -33,6 +35,109 @@ def test_css_is_generated_and_cached() -> None:
     assert "<style>" in first
     assert "--primary" in first
     assert build_css() is first, "stylesheet should be memoised"
+
+
+def test_css_has_balanced_style_tags() -> None:
+    css = build_css()
+    assert css.count("<style>") == 1
+    assert css.count("</style>") == 1
+    assert css.rstrip().endswith("</style>")
+
+
+def test_css_contains_no_blank_lines() -> None:
+    """Regression: the stylesheet was rendered as literal text on the page.
+
+    A leading ``<link>`` tag opens a CommonMark "type 7" HTML block, which is
+    terminated by the first blank line. A blank line inside the ``<style>``
+    body therefore closed the block early and the remaining CSS was re-parsed
+    as Markdown, appearing as visible text above the app.
+    """
+    blanks = [
+        index
+        for index, line in enumerate(build_css().splitlines())
+        if not line.strip()
+    ]
+    assert not blanks, (
+        f"{len(blanks)} blank line(s) will terminate the HTML block early "
+        f"(first at line {blanks[:3]})"
+    )
+
+
+def test_css_has_no_markdown_code_block_indentation() -> None:
+    """Indented lines can also be captured as CommonMark code blocks."""
+    offenders = [
+        line
+        for line in build_css().splitlines()
+        if line.startswith("    ") and line.strip()
+    ]
+    assert not offenders, (
+        f"{len(offenders)} indented line(s) will render as a code block: "
+        f"{offenders[:3]}"
+    )
+
+
+def test_css_survives_the_markdown_pipeline() -> None:
+    """End-to-end: the stylesheet must emerge as a real <style> element.
+
+    This renders the CSS through the same CommonMark configuration Streamlit
+    uses and asserts that nothing escapes as visible page text.
+    """
+    pytest.importorskip("markdown_it")
+    from markdown_it import MarkdownIt
+
+    rendered = MarkdownIt("commonmark", {"html": True}).render(build_css())
+
+    assert "<style>" in rendered
+    assert "<pre>" not in rendered
+    assert "<p>" not in rendered, "CSS leaked out of the HTML block as text"
+
+    outside_style = re.sub(r"<style>.*?</style>", "", rendered, flags=re.DOTALL)
+    visible_text = re.sub(r"<[^>]+>", "", outside_style).strip()
+    assert not visible_text, f"visible text on page: {visible_text[:120]!r}"
+
+
+def test_css_preserves_design_tokens() -> None:
+    """De-indenting must not drop any rule, colour or animation."""
+    css = build_css()
+    for token in (
+        ":root",
+        "--primary: #6366F1",
+        ".ra-hero",
+        ".ra-card",
+        ".ra-chip",
+        ".ra-skeleton",
+        "backdrop-filter",
+        "@keyframes ra-rise",
+        "@keyframes ra-shimmer",
+        "linear-gradient",
+        "radial-gradient",
+        "var(--bg-base)",
+    ):
+        assert token in css, f"missing from stylesheet: {token!r}"
+
+
+def test_component_html_is_single_line() -> None:
+    """Components must not emit indented HTML for the same reason as the CSS."""
+    from resume_analyzer.ui import components
+
+    samples = (
+        components.hero("Title", "Subtitle", [("x", "y")], live=True),
+        components.stat_card("Label", "42", icon="i", meta="m", progress=50),
+        components.card("Title", "<p>body</p>", icon="i"),
+        components.chips(["a", "b"], "ok"),
+        components.key_value("i", "Label", "Value"),
+        components.verdict("text", "ok"),
+        components.timeline([("t", "m")]),
+        components.bullet_list(["one"]),
+        components.score_headline(87, "Excellent Match"),
+        components.skeleton(2),
+        components.section_heading("Title", "Subtitle"),
+    )
+    for html in samples:
+        offenders = [
+            line for line in html.splitlines() if line.startswith("    ") and line.strip()
+        ]
+        assert not offenders, f"indented HTML would render as text: {offenders[:2]}"
 
 
 def test_css_respects_reduced_motion() -> None:
